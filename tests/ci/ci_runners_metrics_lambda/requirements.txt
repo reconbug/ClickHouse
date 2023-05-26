@@ -1,2 +1,2 @@
 ../lambda_shared_package
-../lambda_shared[token]
+../lambda_shared_package[token]
