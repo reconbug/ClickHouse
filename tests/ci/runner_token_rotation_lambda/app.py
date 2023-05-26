@@ -9,33 +9,7 @@ import boto3  # type: ignore
 import jwt
 import requests  # type: ignore
 
-
-def get_installation_id(jwt_token):
-    headers = {
-        "Authorization": f"Bearer {jwt_token}",
-        "Accept": "application/vnd.github.v3+json",
-    }
-    response = requests.get("https://api.github.com/app/installations", headers=headers)
-    response.raise_for_status()
-    data = response.json()
-    for installation in data:
-        if installation["account"]["login"] == "ClickHouse":
-            installation_id = installation["id"]
-    return installation_id
-
-
-def get_access_token(jwt_token, installation_id):
-    headers = {
-        "Authorization": f"Bearer {jwt_token}",
-        "Accept": "application/vnd.github.v3+json",
-    }
-    response = requests.post(
-        f"https://api.github.com/app/installations/{installation_id}/access_tokens",
-        headers=headers,
-    )
-    response.raise_for_status()
-    data = response.json()
-    return data["token"]
+from lambda_shared.token import *
 
 
 def get_runner_registration_token(access_token):
@@ -50,17 +24,6 @@ def get_runner_registration_token(access_token):
     response.raise_for_status()
     data = response.json()
     return data["token"]
-
-
-def get_key_and_app_from_aws():
-    secret_name = "clickhouse_github_secret_key"
-    session = boto3.session.Session()
-    client = session.client(
-        service_name="secretsmanager",
-    )
-    get_secret_value_response = client.get_secret_value(SecretId=secret_name)
-    data = json.loads(get_secret_value_response["SecretString"])
-    return data["clickhouse-app-key"], int(data["clickhouse-app-id"])
 
 
 def main(github_secret_key, github_app_id, push_to_ssm, ssm_parameter_name):

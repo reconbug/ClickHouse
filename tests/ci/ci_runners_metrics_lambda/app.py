@@ -24,6 +24,7 @@ from lambda_shared import (
     RunnerDescriptions,
     list_runners,
 )
+from lambda_shared.token import *
 
 UNIVERSAL_LABEL = "universal"
 
@@ -139,50 +140,9 @@ def get_lost_ec2_instances(runners: RunnerDescriptions) -> List[dict]:
     return lost_instances
 
 
-def get_key_and_app_from_aws() -> Tuple[str, int]:
-    secret_name = "clickhouse_github_secret_key"
-    session = boto3.session.Session()
-    client = session.client(
-        service_name="secretsmanager",
-    )
-    get_secret_value_response = client.get_secret_value(SecretId=secret_name)
-    data = json.loads(get_secret_value_response["SecretString"])
-    return data["clickhouse-app-key"], int(data["clickhouse-app-id"])
-
-
 def handler(event, context):
     private_key, app_id = get_key_and_app_from_aws()
     main(private_key, app_id, True, True)
-
-
-def get_installation_id(jwt_token: str) -> int:
-    headers = {
-        "Authorization": f"Bearer {jwt_token}",
-        "Accept": "application/vnd.github.v3+json",
-    }
-    response = requests.get("https://api.github.com/app/installations", headers=headers)
-    response.raise_for_status()
-    data = response.json()
-    for installation in data:
-        if installation["account"]["login"] == "ClickHouse":
-            installation_id = installation["id"]
-            break
-
-    return installation_id  # type: ignore
-
-
-def get_access_token(jwt_token: str, installation_id: int) -> str:
-    headers = {
-        "Authorization": f"Bearer {jwt_token}",
-        "Accept": "application/vnd.github.v3+json",
-    }
-    response = requests.post(
-        f"https://api.github.com/app/installations/{installation_id}/access_tokens",
-        headers=headers,
-    )
-    response.raise_for_status()
-    data = response.json()
-    return data["token"]  # type: ignore
 
 
 def group_runners_by_tag(

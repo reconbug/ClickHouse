@@ -8,7 +8,8 @@ from queue import Queue
 from threading import Thread
 
 import requests  # type: ignore
-import boto3  # type: ignore
+
+from lambda_shared.token import get_cached_access_token
 
 
 class Keys(set):
@@ -80,17 +81,6 @@ def get_cached_members_keys(members: set) -> Keys:
     return keys
 
 
-def get_token_from_aws() -> str:
-    secret_name = "clickhouse_robot_token"
-    session = boto3.session.Session()
-    client = session.client(
-        service_name="secretsmanager",
-    )
-    get_secret_value_response = client.get_secret_value(SecretId=secret_name)
-    data = json.loads(get_secret_value_response["SecretString"])
-    return data["clickhouse_robot_token"]  # type: ignore
-
-
 def main(token: str, org: str, team_slug: str) -> str:
     members = get_org_team_members(token, org, team_slug)
     keys = get_cached_members_keys(members)
@@ -102,7 +92,7 @@ def handler(event, context):
     _ = context
     _ = event
     if keys.updated_at < (datetime.now().timestamp() - 3600):
-        token = get_token_from_aws()
+        token = get_cached_access_token()
         body = main(token, "ClickHouse", "core")
     else:
         body = "".join(sorted(keys))
