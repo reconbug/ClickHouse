@@ -1,1 +1,1 @@
-../lambda_shared
+../lambda_shared_package
