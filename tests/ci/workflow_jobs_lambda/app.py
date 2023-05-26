@@ -13,10 +13,6 @@ from dataclasses import dataclass
 from typing import Any, List, Optional
 import json
 import logging
-import time
-
-import boto3  # type: ignore
-import requests  # type: ignore
 
 from lambda_shared import ClickHouseHelper, InsertException, get_parameter_from_ssm
 
