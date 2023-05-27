@@ -2,6 +2,7 @@
 #include <Access/Quota.h>
 #include <Access/RowPolicy.h>
 #include <Access/User.h>
+#include <Access/Role.h>
 #include <Access/SettingsProfile.h>
 #include <Access/AccessControl.h>
 #include <Access/resolveSetting.h>
@@ -52,6 +53,38 @@ namespace
 
     UUID generateID(const IAccessEntity & entity) { return generateID(entity.getType(), entity.getName()); }
 
+    template <typename T>
+    void parseGrant(T & entity, const String & string_query)
+    {
+        ParserGrantQuery parser;
+        parser.parseWithoutGrantees();
+
+        String error_message;
+        const char * pos = string_query.data();
+        auto ast = tryParseQuery(parser, pos, pos + string_query.size(), error_message, false, "", false, 0, 0);
+
+        if (!ast)
+            throw Exception(ErrorCodes::BAD_ARGUMENTS, "Failed to parse grant query. Error: {}", error_message);
+
+        auto & query = ast->as<ASTGrantQuery &>();
+
+        if (query.roles)
+            throw Exception(ErrorCodes::BAD_ARGUMENTS, "Roles can't be granted in config file");
+
+        if (!query.cluster.empty())
+            throw Exception(ErrorCodes::BAD_ARGUMENTS, "Can't grant on cluster using config file");
+
+        if (query.grantees)
+            throw Exception(ErrorCodes::BAD_ARGUMENTS, "You can't specify grantees in query using config file");
+
+        for (auto & element : query.access_rights_elements)
+        {
+            if (query.is_revoke)
+                entity.access.revoke(element);
+            else
+                entity.access.grant(element);
+        }
+    }
 
     UserPtr parseUser(
         const Poco::Util::AbstractConfiguration & config,
@@ -241,37 +274,8 @@ namespace
 
         if (grant_queries)
         {
-            ParserGrantQuery parser;
-            parser.parseWithoutGrantees();
-
             for (const auto & string_query : *grant_queries)
-            {
-                String error_message;
-                const char * pos = string_query.data();
-                auto ast = tryParseQuery(parser, pos, pos + string_query.size(), error_message, false, "", false, 0, 0);
-
-                if (!ast)
-                    throw Exception(ErrorCodes::BAD_ARGUMENTS, "Failed to parse grant query. Error: {}", error_message);
-
-                auto & query = ast->as<ASTGrantQuery &>();
-
-                if (query.roles)
-                    throw Exception(ErrorCodes::BAD_ARGUMENTS, "Roles can't be granted in config file");
-
-                if (!query.cluster.empty())
-                    throw Exception(ErrorCodes::BAD_ARGUMENTS, "Can't grant on cluster using config file");
-
-                if (query.grantees)
-                    throw Exception(ErrorCodes::BAD_ARGUMENTS, "You can't specify grantees in query using config file");
-
-                for (auto & element : query.access_rights_elements)
-                {
-                    if (query.is_revoke)
-                        user->access.revoke(element);
-                    else
-                        user->access.grant(element);
-                }
-            }
+                parseGrant(*user, string_query);
         }
         else
         {
@@ -343,6 +347,50 @@ namespace
         }
 
         return users;
+    }
+
+    RolePtr parseRole(const Poco::Util::AbstractConfiguration & config, const String & role_name)
+    {
+        auto role = std::make_shared<Role>();
+        role->setName(role_name);
+        String role_config = "roles." + role_name;
+
+        const auto grants_config = role_config + ".grants";
+        if (config.has(grants_config))
+        {
+            Poco::Util::AbstractConfiguration::Keys keys;
+            config.keys(grants_config, keys);
+            for (const auto & key : keys)
+            {
+                const auto query = config.getString(grants_config + "." + key);
+                parseGrant(*role, query);
+            }
+        }
+
+        return role;
+    }
+
+    std::vector<AccessEntityPtr> parseRoles(const Poco::Util::AbstractConfiguration & config)
+    {
+        Poco::Util::AbstractConfiguration::Keys role_names;
+        config.keys("roles", role_names);
+
+        std::vector<AccessEntityPtr> roles;
+        roles.reserve(role_names.size());
+        for (const auto & role_name : role_names)
+        {
+            try
+            {
+                roles.push_back(parseRole(config, role_name));
+            }
+            catch (Exception & e)
+            {
+                e.addMessage(fmt::format("while parsing roles '{}' in users configuration file", role_name));
+                throw;
+            }
+        }
+
+        return roles;
     }
 
 
@@ -705,6 +753,8 @@ void UsersConfigAccessStorage::parseFromConfig(const Poco::Util::AbstractConfigu
         for (const auto & entity : parseRowPolicies(config, access_control.isEnabledUsersWithoutRowPoliciesCanReadRows()))
             all_entities.emplace_back(generateID(*entity), entity);
         for (const auto & entity : parseSettingsProfiles(config, allowed_profile_ids, access_control))
+            all_entities.emplace_back(generateID(*entity), entity);
+        for (const auto & entity : parseRoles(config))
             all_entities.emplace_back(generateID(*entity), entity);
         memory_storage.setAll(all_entities);
     }

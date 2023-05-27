@@ -15,4 +15,13 @@
             </grants>
         </another>
     </users>
+    <roles>
+        <test_role>
+            <grants>
+                <query>GRANT SHOW ON *.*</query>
+                <query>REVOKE SHOW ON system.*</query>
+                <query>GRANT CREATE ON *.* WITH GRANT OPTION</query>
+            </grants>
+        </test_role>
+    </roles>
 </clickhouse>

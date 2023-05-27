@@ -42,12 +42,22 @@ def test_allow_read_from_system_tables():
     )
 
 
-def test_grants_from_config():
+def test_user_grants_from_config():
     assert node.query("SHOW GRANTS FOR another") == TSV(
         [
             "GRANT SHOW ON *.* TO another",
             "GRANT CREATE ON *.* TO another WITH GRANT OPTION",
             "GRANT SELECT ON system.* TO another",
             "REVOKE CREATE DATABASE, CREATE TABLE, CREATE VIEW, CREATE DICTIONARY ON system.* FROM another",
+        ]
+    )
+
+
+def test_role_grants_from_config():
+    assert node.query("SHOW GRANTS FOR test_role") == TSV(
+        [
+            "GRANT SHOW ON *.* TO test_role",
+            "GRANT CREATE ON *.* TO test_role WITH GRANT OPTION",
+            "REVOKE SHOW ON system.* FROM test_role",
         ]
     )
